@@ -1,0 +1,15 @@
+{
+    "image": "docker.io/louvainverificationlab/pynusmv:latest",
+    "forwardPorts": [3000],
+    "customizations": {
+      // Configure properties specific to VS Code.
+      "vscode": {
+        // Add the IDs of extensions you want installed when the container is created.
+        "extensions": [
+            "dbaeumer.vscode-eslint",
+            "ms-python.python",
+            "VisualStudioExptTeam.vscodeintellicode",
+            "LiamWalsh98.vscode-nusmv"]
+      }
+    }
+  }
