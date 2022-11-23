@@ -25,4 +25,4 @@ MODULE main
         del : delay(inv.out);
         inv : inverter(del.out);
         
-INVARSPEC inv.out = !del.out
+INVARSPEC inv.out =! del.out
