@@ -8,18 +8,22 @@ def spec_to_bdd(model, spec):
     bddspec = pynusmv.mc.eval_ctl_spec(model, spec)
     return bddspec
 
+def generate_witness(fsm, trace, curr_states):
+    state = fsm.pick_one_state(curr_states & trace[-1])
+    if len(trace) == 1: return (state, )
+    return generate_witness(fsm, trace[:-1], fsm.pre(curr_states)) + (fsm.pick_one_inputs(state), state)
+
 def symbolicReachable(fsm, spec):
     reach = fsm.init
     new = fsm.init
-    witness = tuple()
-
+    trace = [fsm.init]
 
     while new.isnot_false():
-        if new.intersection(spec).isnot_false():
-            return True, witness + (fsm.pick_one_state(new.intersection(spec)), )
-
-        witness = witness + (fsm.pick_one_state(new), fsm.pick_one_inputs(new))
+        final = new.intersection(spec)
+        if final.isnot_false():
+            return True, generate_witness(fsm, trace, final)
         new = fsm.post(new) - reach
+        trace = trace + [new]
         reach = reach + new
 
     return False, None
@@ -41,12 +45,9 @@ def check_explain_inv_spec(spec):
     where keys are state and inputs variable of the loaded SMV model, and values
     are their value.
     """
-    # ltlspec = pynusmv.prop.g(spec)
-    # res, trace = pynusmv.mc.check_explain_ltl_spec(ltlspec)
-    
+
     fsm = pynusmv.glob.prop_database().master.bddFsm
     res, trace = symbolicReachable(fsm, spec_to_bdd(fsm, pynusmv.prop.not_(spec)))
-
     return not res, tuple(map(lambda var: var.get_str_values(), trace)) if res else None
 
 if len(sys.argv) != 2:
