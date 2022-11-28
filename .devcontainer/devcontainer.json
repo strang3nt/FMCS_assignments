@@ -7,7 +7,8 @@
         "extensions": [
             "ms-python.python",
             "VisualStudioExptTeam.vscodeintellicode",
-            "LiamWalsh98.vscode-nusmv"]
+            "LiamWalsh98.vscode-nusmv",
+            "streetsidesoftware.code-spell-checker"]
       }
     }
   }
