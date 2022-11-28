@@ -11,6 +11,7 @@ abstract: |
   Formal Methods for Cyberphisical Systems first assignment.
   The goal was to develop an algorithm for symbolic model checking of invariants. The report contains description and proof of correctness of the algorithms developed. 
 highlight-style: kate
+geometry: margin=1in
 ...
 
 # Introduction
