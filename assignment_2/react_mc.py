@@ -87,6 +87,45 @@ def parse_react(spec):
         return None
     return (f_formula, g_formula)
 
+def compute_reach(model, spec):
+    reach = model.init
+    new = model.init
+    trace = [model.init]
+    while new.isnot_false():
+        new = model.post(new) - reach
+        trace = trace + [new]
+        reach = reach + new
+    return reach, trace
+
+def find_cycle_state(model, recur, pre_reach): None
+def build_loop(model, state, new_reach): None
+
+# final_states is the state that starts the loop
+def generate_witness(model, trace, final_states):
+    state = model.pick_one_state(final_states & trace[-1])
+    if len(trace) == 1: return (state, )
+    return generate_witness(
+        model, 
+        trace[:-1], 
+        model.pre(final_states)) + (model.pick_one_inputs(state), state)
+
+def symbolic_repeatable(model, spec):
+    reach, trace = compute_reach(model, spec)
+
+    recur = reach & spec
+    while recur.isnot_false():
+        pre_reach = None
+        new = model.pre(recur)
+        
+        while new.isnot_false():
+            pre_reach = pre_reach + new
+            if recur.entailed(pre_reach):
+                state_loop, new_trace = find_cycle_state(model, recur, pre_reach)
+                return True, generate_witness(model, trace, state_loop)[: -1] + build_loop(model, state_loop, new_trace)
+            new = model.pre(new) - reach
+    
+    return False, None
+
 def check_react_spec(spec):
     """
     Return whether the loaded SMV model satisfies or not the GR(1) formula
@@ -95,7 +134,9 @@ def check_react_spec(spec):
     """
     if parse_react(spec) == None:
         return None
-    return pynusmv.mc.check_explain_ltl_spec(spec)
+
+    model = pynusmv.glob.prop_database().master.bddFsm
+    return symbolic_repeatable(model, spec_to_bdd(model, pynusmv.prop.not_(spec)))
 
 if len(sys.argv) != 2:
     print("Usage:", sys.argv[0], "filename.smv")
