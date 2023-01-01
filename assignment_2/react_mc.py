@@ -87,7 +87,7 @@ def parse_react(spec):
         return None
     return (f_formula, g_formula)
 
-def compute_reach(model, spec):
+def compute_reach(model):
     reach = model.init
     new = model.init
     trace = [model.init]
@@ -97,8 +97,35 @@ def compute_reach(model, spec):
         reach = reach + new
     return reach, trace
 
-def find_cycle_state(model, recur, pre_reach): None
-def build_loop(model, state, new_reach): None
+def find_cycle_state(model, recur, pre_reach):
+    s = model.pick_one_state(recur)
+    while True:
+        r = None
+        new = model.post(s) & pre_reach
+        new_reach = [new]
+        while new.isnot_false():
+            r = r + new
+            new = model.post(new) & pre_reach
+            new = new - r
+            new_reach.append(new)
+        r = r & recur
+        if s.entailed(r):
+            return s, new_reach
+        else:
+            s = model.pick_one_state(r)
+
+def build_loop(model, state, new_reach):
+    k = [i for i in range(len(new_reach)) if state.entails(new_reach[i])][0]
+    path = [state]
+    curr = state
+
+    for i in reversed(range(k - 1)):
+        pred = model.pre(curr) & new_reach[i]
+        curr = model.pick_one_state(pred)
+        path.insert(curr)
+        
+    path.insert(state)
+
 
 # final_states is the state that starts the loop
 def generate_witness(model, trace, final_states):
@@ -109,20 +136,20 @@ def generate_witness(model, trace, final_states):
         trace[:-1], 
         model.pre(final_states)) + (model.pick_one_inputs(state), state)
 
-def symbolic_repeatable(model, spec):
-    reach, trace = compute_reach(model, spec)
+def symbolic_repeatable(model, spec, spec_r):
+    reach, trace = compute_reach(model)
 
     recur = reach & spec
     while recur.isnot_false():
         pre_reach = None
-        new = model.pre(recur)
+        new = model.pre(recur) & spec_r
         
         while new.isnot_false():
             pre_reach = pre_reach + new
             if recur.entailed(pre_reach):
                 state_loop, new_trace = find_cycle_state(model, recur, pre_reach)
                 return True, generate_witness(model, trace, state_loop)[: -1] + build_loop(model, state_loop, new_trace)
-            new = model.pre(new) - reach
+            new = (model.pre(new) & spec_r) - pre_reach
     
     return False, None
 
