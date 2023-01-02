@@ -2,6 +2,7 @@ import pynusmv
 import sys
 from pynusmv_lower_interface.nusmv.parser import parser 
 from collections import deque
+from itertools import takewhile 
 
 specTypes = {'LTLSPEC': parser.TOK_LTLSPEC, 'CONTEXT': parser.CONTEXT,
     'IMPLIES': parser.IMPLIES, 'IFF': parser.IFF, 'OR': parser.OR, 'XOR': parser.XOR, 'XNOR': parser.XNOR,
@@ -115,7 +116,7 @@ def find_cycle_state(model, recur, pre_reach):
             s = model.pick_one_state(r)
 
 def build_loop(model, state, new_reach):
-    k = [i for i in range(len(new_reach)) if state.intersection(new_reach[i]).equal(state)][0]
+    k = [i for i in range(len(new_reach)) if state.entailed(new_reach[i])][0]
     path = [model.pick_one_inputs(state)] + [state]
     curr = state
 
@@ -131,14 +132,15 @@ def build_loop(model, state, new_reach):
 # generation of witness should start from init and finish from the previous element of trace s.t. trace[i] contains final_states
 def generate_witness(model, trace, final_states):
     state = model.pick_one_state(final_states & trace[-1])
-    if len(trace) == 1: return (state, )
+    if len(trace) == 1: return [state]
     return generate_witness(
         model, 
         trace[:-1], 
-        model.pre(final_states)) + (model.pick_one_inputs(state), state)
+        model.pre(final_states)) + [model.pick_one_inputs(state), state]
 
 def symbolic_repeatable(model, f, not_g):
     reach, trace = compute_reach(model)
+
 
     recur = reach & f & not_g
     while recur.isnot_false():
@@ -147,9 +149,14 @@ def symbolic_repeatable(model, f, not_g):
         
         while new.isnot_false():
             pre_reach = pre_reach + new
-            if recur.intersection(pre_reach).equal(recur):
+            if recur.entailed(pre_reach):
                 state_loop, new_trace = find_cycle_state(model, recur, pre_reach)
-                return True, build_loop(model, state_loop, new_trace)
+                first_trace = generate_witness(
+                    model, 
+                    list(takewhile(lambda x: not(state_loop.entailed(x)), trace)) + [state_loop], state_loop)
+
+                return True, first_trace[:-1] + list(build_loop(model, state_loop, new_trace))
+                
             new = (model.pre(new) - pre_reach) & not_g
         recur = recur & pre_reach & not_g
     return False, None
@@ -160,16 +167,12 @@ def check_react_spec(spec):
     `spec`, that is, whether all executions of the model satisfies `spec`
     or not. 
     """
-    
     spec_parsed = parse_react(spec) 
     if spec_parsed == None:
         return None
     f, g = spec_parsed
     model = pynusmv.glob.prop_database().master.bddFsm
-    
     res, trace = symbolic_repeatable(model, spec_to_bdd(model, f) ,spec_to_bdd(model, ~g))
-
-    #return pynusmv.mc.check_explain_ltl_spec(spec)
     return not res, tuple(map(lambda var: var.get_str_values(), trace)) if res else None
     
 if len(sys.argv) != 2:
