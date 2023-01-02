@@ -100,7 +100,7 @@ def compute_reach(model):
 def find_cycle_state(model, recur, pre_reach):
     s = model.pick_one_state(recur)
     while True:
-        r = None
+        r = pynusmv.dd.BDD.false()
         new = model.post(s) & pre_reach
         new_reach = [new]
         while new.isnot_false():
@@ -115,19 +115,20 @@ def find_cycle_state(model, recur, pre_reach):
             s = model.pick_one_state(r)
 
 def build_loop(model, state, new_reach):
-    k = [i for i in range(len(new_reach)) if state.entails(new_reach[i])][0]
-    path = [state]
+    k = [i for i in range(len(new_reach)) if state.intersection(new_reach[i]).equal(state)][0]
+    path = [model.pick_one_inputs(state)] + [state]
     curr = state
 
-    for i in reversed(range(k - 1)):
+    for i in reversed(range(k)):
         pred = model.pre(curr) & new_reach[i]
         curr = model.pick_one_state(pred)
-        path.insert(curr)
+        path = [model.pick_one_inputs(curr)] + [curr] + path # insert to head
         
-    path.insert(state)
+    return [state] + path
 
 
 # final_states is the state that starts the loop
+# generation of witness should start from init and finish from the previous element of trace s.t. trace[i] contains final_states
 def generate_witness(model, trace, final_states):
     state = model.pick_one_state(final_states & trace[-1])
     if len(trace) == 1: return (state, )
@@ -136,21 +137,21 @@ def generate_witness(model, trace, final_states):
         trace[:-1], 
         model.pre(final_states)) + (model.pick_one_inputs(state), state)
 
-def symbolic_repeatable(model, spec, spec_r):
+def symbolic_repeatable(model, f, not_g):
     reach, trace = compute_reach(model)
 
-    recur = reach & spec
+    recur = reach & f & not_g
     while recur.isnot_false():
-        pre_reach = None
-        new = model.pre(recur) & spec_r
+        pre_reach = pynusmv.dd.BDD.false() # empty BDD
+        new = model.pre(recur) & not_g
         
         while new.isnot_false():
             pre_reach = pre_reach + new
-            if recur.entailed(pre_reach):
+            if recur.intersection(pre_reach).equal(recur):
                 state_loop, new_trace = find_cycle_state(model, recur, pre_reach)
-                return True, generate_witness(model, trace, state_loop)[: -1] + build_loop(model, state_loop, new_trace)
-            new = (model.pre(new) & spec_r) - pre_reach
-    
+                return True, build_loop(model, state_loop, new_trace)
+            new = (model.pre(new) - pre_reach) & not_g
+        recur = recur & pre_reach & not_g
     return False, None
 
 def check_react_spec(spec):
@@ -159,12 +160,18 @@ def check_react_spec(spec):
     `spec`, that is, whether all executions of the model satisfies `spec`
     or not. 
     """
-    if parse_react(spec) == None:
+    
+    spec_parsed = parse_react(spec) 
+    if spec_parsed == None:
         return None
-
+    f, g = spec_parsed
     model = pynusmv.glob.prop_database().master.bddFsm
-    return symbolic_repeatable(model, spec_to_bdd(model, pynusmv.prop.not_(spec)))
+    
+    res, trace = symbolic_repeatable(model, spec_to_bdd(model, f) ,spec_to_bdd(model, ~g))
 
+    #return pynusmv.mc.check_explain_ltl_spec(spec)
+    return not res, tuple(map(lambda var: var.get_str_values(), trace)) if res else None
+    
 if len(sys.argv) != 2:
     print("Usage:", sys.argv[0], "filename.smv")
     sys.exit(1)
