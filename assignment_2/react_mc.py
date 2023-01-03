@@ -162,7 +162,7 @@ def symbolic_repeatable(model, f, not_g):
                 return True, first_trace[:-1] + list(build_loop(model, state_loop, new_trace))
                 
             new = (model.pre(new) - pre_reach) & not_g
-        recur = recur & pre_reach & not_g
+        recur = recur & pre_reach
     return False, None
 
 def check_react_spec(spec):
