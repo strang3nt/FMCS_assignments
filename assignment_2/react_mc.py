@@ -98,7 +98,7 @@ def compute_reach(model):
         reach = reach + new
     return reach, trace
 
-def find_cycle_state(model, recur, pre_reach):
+def find_cycle_start(model, recur, pre_reach):
     s = model.pick_one_state(recur)
     while True:
         r = pynusmv.dd.BDD.false()
@@ -127,13 +127,14 @@ def build_loop(model, state, new_reach):
         
     return [state] + path
 
-
-# final_states is the state that starts the loop
-# generation of witness should start from init and finish from the previous element of trace s.t. trace[i] contains final_states
-def generate_witness(model, trace, final_states):
+def generate_witness_first(model, trace, final_states):
+    """
+    final_states is the state that starts the loop.
+    Generation of witness should start from init and finish from the previous element of trace s.t. trace[i] contains final_states.
+    """
     state = model.pick_one_state(final_states & trace[-1])
     if len(trace) == 1: return [state]
-    return generate_witness(
+    return generate_witness_first(
         model, 
         trace[:-1], 
         model.pre(final_states)) + [model.pick_one_inputs(state), state]
@@ -150,10 +151,13 @@ def symbolic_repeatable(model, f, not_g):
         while new.isnot_false():
             pre_reach = pre_reach + new
             if recur.entailed(pre_reach):
-                state_loop, new_trace = find_cycle_state(model, recur, pre_reach)
-                first_trace = generate_witness(
+                state_loop, new_trace = find_cycle_start(model, recur, pre_reach)
+                first_trace = generate_witness_first(
                     model, 
-                    list(takewhile(lambda x: not(state_loop.entailed(x)), trace)) + [state_loop], state_loop)
+                    list(
+                        takewhile(lambda x: not(state_loop.entailed(x)), 
+                        trace)) + [state_loop], 
+                    state_loop)
 
                 return True, first_trace[:-1] + list(build_loop(model, state_loop, new_trace))
                 

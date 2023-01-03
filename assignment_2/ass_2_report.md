@@ -11,10 +11,92 @@ abstract: |
   Formal Methods for Cyberphisical Systems second assignment. The goal is to implement a symbolic algorithm for the verification of a special class of LTL formulas, using BDDs as data structure to represent and manipulate regions. The class of formulas considered by the algorithm is called "reactivity" properties and have the special form $\square\lozenge f\rightarrow\square\lozenge g$. The report contains description and proof of correctness of the algorithms developed. 
 highlight-style: kate
 geometry: margin=1in
+
+references:
+- type: article-journal
+  id: bloem2012
+  title: 'Synthesis of Reactive(1) designs'
+  journal: 'Journal of Computer and System Sciences'
+  volume: 78
+  number: 3
+  pages: 911-938
+  year: 2012
+  note: 'In Commemoration of Amir Pnueli'
+  ISSN: 0022-0000
+  DOI: '10.1016/j.jcss.2011.08.007'
+  URL: 'https://www.sciencedirect.com/science/article/pii/S0022000011000869'
+  author: 
+    - Roderick Bloem
+    - Barbara Jobstmann 
+    - Nir Piterman 
+    - Amir Pnueli 
+    - Yaniv Sa'ar
+  keywords: Property synthesis, Realizability, Game theory
+
 ...
 
-<!-- docker run --rm --volume "$(pwd):/data" --user $(id -u):$(id -g) pandoc/latex ass_2_report.md -o outfile.pdf -->
+<!-- 
+  Compiled to pdf via Pandoc's docker distribution:
+  docker run --rm --volume "$(pwd):/data" --user $(id -u):$(id -g) pandoc/latex ass_2_report.md --citeproc -o outfile.pdf
+ -->
 
 # Introduction
 
-TODO
+This report contains a description and a justification of the correctness of the symbolic model checking algorithm implemented. This project uses the library [Pynusmv](https://pynusmv.readthedocs.io/). The goal of the project is to create the necessary algorithm(s) in order to check liveness properties in the following form $\square\lozenge f\rightarrow\square\lozenge g$. Such formulas are called reactivity properties [@bloem2012].
+
+Follows a description and a correctness sketch of the functions implemented:
+
+ - `symbolic_repeatable`, which looks for a cycle that negates the reactivity property, if such cycle exists it outputs `True` and the witness, `False` otherwise
+ - 3 auxiliary functions which given the required inputs generate the lazo-shaped witness, namely `generate_witness_first`, `find_cycle_start` and `build_loop`.
+
+
+# Model checking reactivity properties
+
+The reactivity property has the following form: $\square\lozenge f\rightarrow\square\lozenge g$. $g$ and $f$ are properties without temporal operators.
+The negation of a reactivity property is the following: $\square\lozenge f\wedge\lozenge\square\neg g$
+
+In order to perform model checking one must find a path in the model that satisfies the negated property: which means to find a 
+path containing a cycle such that $\square\lozenge f\wedge\square\neg g$ is true.
+The symbolic model checking algorithm does just that.
+
+# Symbolic model checking function
+
+```python
+def symbolic_repeatable(model, f, not_g):
+  
+    reach, trace = compute_reach(model)
+
+    recur = reach & f & not_g
+    while recur.isnot_false():
+        pre_reach = pynusmv.dd.BDD.false() # empty BDD
+        new = model.pre(recur) & not_g
+        
+        while new.isnot_false():
+            pre_reach = pre_reach + new
+            if recur.entailed(pre_reach):
+                state_loop, new_trace = find_cycle_start(model, recur, pre_reach)
+                first_trace = generate_witness_first(
+                    model, 
+                    list(
+                        takewhile(lambda x: not(state_loop.entailed(x)), 
+                        trace)) + [state_loop], 
+                    state_loop)
+
+                return True, first_trace[:-1] + list(build_loop(model, state_loop, new_trace))
+                
+            new = (model.pre(new) - pre_reach) & not_g
+        recur = recur & pre_reach & not_g
+    return False, None
+```
+
+  ## Description
+
+  ## Correctness
+
+# Witness generation
+
+  ## Description
+
+  ## Correctness
+
+# Final remarks
