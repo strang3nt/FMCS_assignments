@@ -66,17 +66,16 @@ The symbolic model checking algorithm does just that.
 def compute_reach(model):
     reach = model.init
     new = model.init
-    trace = [model.init]
+    trace = []
     while new.isnot_false():
-        new = model.post(new) - reach
         trace = trace + [new]
+        new = model.post(new) - reach
         reach = reach + new
     return reach, trace
 ```
 
 First the `compute_reach` is executed, compute reach returns both the reach itself, which is
 a BDD representing all reachable states of the model, and a trace, which is a list of the values of the different state sets computed while looking for the reach.
-Note that the last value inside the trace is an empty BDD.
 
 ```python
 def symbolic_repeatable(model, f, not_g):
@@ -155,8 +154,7 @@ def find_cycle_start(model, recur, pre_reach):
         cycle_trace = [new]
         while new.isnot_false():
             r = r + new
-            new = model.post(new) & pre_reach
-            new = new - r
+            new = (model.post(new) & pre_reach) - r
             cycle_trace.append(new)
         r = r & recur
         if s.entailed(r):
