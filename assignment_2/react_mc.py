@@ -103,45 +103,42 @@ def find_cycle_start(model, recur, pre_reach):
     while True:
         r = pynusmv.dd.BDD.false()
         new = model.post(s) & pre_reach
-        new_reach = [new]
+        cycle_trace = [new]
         while new.isnot_false():
             r = r + new
-            new = model.post(new) & pre_reach
-            new = new - r
-            new_reach.append(new)
+            new = (model.post(new) & pre_reach) - r
+            cycle_trace.append(new)
         r = r & recur
         if s.entailed(r):
-            return s, new_reach
+            return s, cycle_trace
         else:
             s = model.pick_one_state(r)
 
-def build_loop(model, state, new_reach):
-    k = [i for i in range(len(new_reach)) if state.entailed(new_reach[i])][0]
-    path = [model.pick_one_inputs(state)] + [state]
-    curr = state
+def build_cycle(model, s, cycle_trace):
+    path = [model.pick_one_inputs(s)] + [s]
+    curr = s
 
-    for i in reversed(range(k)):
-        pred = model.pre(curr) & new_reach[i]
+    for new_i in reversed(list(takewhile(lambda x: not(s.entailed(x)), cycle_trace))):
+        pred = model.pre(curr) & new_i
         curr = model.pick_one_state(pred)
         path = [model.pick_one_inputs(curr)] + [curr] + path # insert to head
         
-    return [state] + path
+    return [s] + path
 
-def generate_witness_first(model, trace, final_states):
+def generate_witness(model, trace, final_states):
     """
     final_states is the state that starts the loop.
     Generation of witness should start from init and finish from the previous element of trace s.t. trace[i] contains final_states.
     """
     state = model.pick_one_state(final_states & trace[-1])
     if len(trace) == 1: return [state]
-    return generate_witness_first(
+    return generate_witness(
         model, 
         trace[:-1], 
         model.pre(final_states)) + [model.pick_one_inputs(state), state]
 
 def symbolic_repeatable(model, f, not_g):
     reach, trace = compute_reach(model)
-
 
     recur = reach & f & not_g
     while recur.isnot_false():
@@ -151,18 +148,16 @@ def symbolic_repeatable(model, f, not_g):
         while new.isnot_false():
             pre_reach = pre_reach + new
             if recur.entailed(pre_reach):
-                state_loop, new_trace = find_cycle_start(model, recur, pre_reach)
-                first_trace = generate_witness_first(
+                s, cycle_trace = find_cycle_start(model, recur, pre_reach)
+                first_trace = generate_witness(
                     model, 
-                    list(
-                        takewhile(lambda x: not(state_loop.entailed(x)), 
-                        trace)) + [state_loop], 
-                    state_loop)
-
-                return True, first_trace[:-1] + list(build_loop(model, state_loop, new_trace))
+                    list(takewhile(lambda x: not(s.entailed(x)), trace)) + [s], 
+                    s
+                )
+                return True, first_trace[:-1] + list(build_cycle(model, s, cycle_trace))
                 
             new = (model.pre(new) - pre_reach) & not_g
-        recur = recur & pre_reach
+        recur = recur & pre_reach # removes states that cannot form loop
     return False, None
 
 def check_react_spec(spec):
@@ -175,6 +170,7 @@ def check_react_spec(spec):
     if spec_parsed == None:
         return None
     f, g = spec_parsed
+
     model = pynusmv.glob.prop_database().master.bddFsm
     res, trace = symbolic_repeatable(model, spec_to_bdd(model, f) ,spec_to_bdd(model, ~g))
     return not res, tuple(map(lambda var: var.get_str_values(), trace)) if res else None

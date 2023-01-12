@@ -1,5 +1,5 @@
 ---
-title:  'Formal Methods for Cyberphisical Systems: Assignment 2'
+title:  'Formal Methods for Cyber-Physical Systems: Assignment 2'
 author:
 - Alessandro Flori
 institution: 
@@ -8,7 +8,7 @@ institution:
 date: 21 January, 2023
 abstract: |
   This is the report of the the master's degree course 
-  Formal Methods for Cyberphisical Systems second assignment. The goal is to implement a symbolic algorithm for the verification of a special class of LTL formulas, using BDDs as data structure to represent and manipulate regions. The class of formulas considered by the algorithm is called "reactivity" properties and have the special form $\square\lozenge f\rightarrow\square\lozenge g$. The report contains description and proof of correctness of the algorithms developed. 
+  Formal Methods for Cyber-Physical Systems second assignment. The goal is to implement a symbolic algorithm for the verification of a special class of LTL formulas, using BDDs as data structure to represent and manipulate regions. The class of formulas considered by the algorithm is called "reactivity" properties and have the special form $\square\lozenge f\rightarrow\square\lozenge g$. The report contains description and proof of correctness of the algorithms developed. 
 highlight-style: kate
 geometry: margin=1in
 
@@ -42,21 +42,22 @@ references:
 
 # Introduction
 
-This report contains a description and a justification of the correctness of the symbolic model checking algorithm implemented. This project uses the library [Pynusmv](https://pynusmv.readthedocs.io/). The goal of the project is to create the necessary algorithm(s) in order to check liveness properties in the following form $\square\lozenge f\rightarrow\square\lozenge g$. Such formulas are called reactivity properties [@bloem2012].
+This report contains a description and a justification of the correctness of the symbolic model checking algorithm implemented. This project uses the library [Pynusmv](https://pynusmv.readthedocs.io/). The goal of the project is to create the necessary algorithm(s) in order to check liveness properties in the following form $\square\lozenge f\rightarrow\square\lozenge g$. Such class of formulas are called reactivity properties [@bloem2012].
 
 Follows a description and a correctness sketch of the functions implemented:
 
  - `symbolic_repeatable`, which looks for a cycle that negates the reactivity property, if such cycle exists it outputs `True` and the witness, `False` otherwise
- - 3 auxiliary functions which given the required inputs generate the lazo-shaped witness, namely `generate_witness_first`, `find_cycle_start` and `build_loop`.
+ - 3 auxiliary functions which given the required inputs generate the lazo-shaped witness, namely `generate_witness_first`, `find_cycle_start` and `build_cycle`.
+
 
 
 # Model checking reactivity properties
 
 The reactivity property has the following form: $\square\lozenge f\rightarrow\square\lozenge g$. $g$ and $f$ are properties without temporal operators.
-The negation of a reactivity property is the following: $\square\lozenge f\wedge\lozenge\square\neg g$
+The negation of a reactivity property is the following: $\square\lozenge f\wedge\lozenge\square\neg g$.
 
-In order to perform model checking one must find a path in the model that satisfies the negated property: which means to find a 
-path containing a cycle such that $\square\lozenge f\wedge\square\neg g$ is true.
+In order to perform model checking a path satisfying the negated property must be found: which means to find a 
+path containing a cycle such that $\square\lozenge f\wedge\square\neg g$ is a property for that cycle.
 The symbolic model checking algorithm does just that.
 
 # Symbolic model checking function
@@ -74,7 +75,7 @@ def compute_reach(model):
 ```
 
 First the `compute_reach` is executed, compute reach returns both the reach itself, which is
-all the reachable states of the model, and a trace, which is a collection of the values of new.
+a BDD representing all reachable states of the model, and a trace, which is a list of the values of the different state sets computed while looking for the reach.
 Note that the last value inside the trace is an empty BDD.
 
 ```python
@@ -90,15 +91,13 @@ def symbolic_repeatable(model, f, not_g):
         while new.isnot_false():
             pre_reach = pre_reach + new
             if recur.entailed(pre_reach):
-                state_loop, new_trace = find_cycle_start(model, recur, pre_reach)
+                s, cycle_trace = find_cycle_start(model, recur, pre_reach)
                 first_trace = generate_witness_first(
                     model, 
-                    list(
-                        takewhile(lambda x: not(state_loop.entailed(x)), 
-                        trace)) + [state_loop], 
-                    state_loop)
-
-                return True, first_trace[:-1] + list(build_loop(model, state_loop, new_trace))
+                    list(takewhile(lambda x: not(s.entailed(x)), trace)) + [s], 
+                    s
+                )
+                return True, first_trace[:-1] + list(build_cycle(model, s, cycle_trace))
                 
             new = (model.pre(new) - pre_reach) & not_g
         recur = recur & pre_reach
@@ -124,6 +123,27 @@ Note that in order to print a cycle which respects the following property $\squa
 all new states to respect the property $\neg g$: otherwise it would not be very difficult, and not necessarily possible, to build the loop
 needed in order to provide the counter example to the reactivity property.
 
+Follows a proof of correctness for the algorithm, without considering the witness generation.
+
+> `symbolic_repeatable` returns True if and only if $F$ is repeatable and $G$ is persistent in the transition system, where $F$ and $G$ are the sets formed by the states that satisfy the properties $f$ and $\neg g$, respectively.
+
+The following are the claims to prove:
+
+1. If there is a reachable state $s$, such that $s\in F\wedge s\in G$, and there is an infinite execution starting in s satisfying
+$\mbox{Repeatedly}\ F \wedge \mbox{Persistently}\ G$, then s will always stay in recur (and thus, recur cannot get empty)
+2. If inner loop finds that from every state in recur, some state in recur is reachable with $\geq 1$
+transitions, then indeed there is an infinite execution satisfying $\mbox{Repeatedly}\ F \wedge \mbox{Persistently}\ G$
+
+
+Proof:
+
+1. Such state s, will always be found while computing the frontiers (the value of new), thus, since pre_reach is the union of all frontiers, it will always be true that $s\in pre\_reach$, which leads to the conclusion that $s\in reach$ at all times. $s\in G$ is ensured by the shape of the transitions: in fact whenever a post operation is executed, the resulting set is
+intersected with $G$.
+
+2. Since the computation of the frontiers starts from recur, it follows that whenever a new frontier contains a state from recur, such state is part of an infinite execution satisfying $\mbox{Repeatedly}\ F$. The infinite execution also satisfies $\mbox{Persistently}\ G$ because each new frontier is intersected with the set $G$, and because recur itself is a set of states that satisfy $F\wedge G$.
+
+<!-- remember that F is a set of states  -->
+
 # Witness generation
 
 ```python
@@ -132,31 +152,30 @@ def find_cycle_start(model, recur, pre_reach):
     while True:
         r = pynusmv.dd.BDD.false()
         new = model.post(s) & pre_reach
-        new_reach = [new]
+        cycle_trace = [new]
         while new.isnot_false():
             r = r + new
             new = model.post(new) & pre_reach
             new = new - r
-            new_reach.append(new)
+            cycle_trace.append(new)
         r = r & recur
         if s.entailed(r):
-            return s, new_reach
+            return s, cycle_trace
         else:
             s = model.pick_one_state(r)
 
-def build_loop(model, state, new_reach):
-    k = [i for i in range(len(new_reach)) if state.entailed(new_reach[i])][0]
-    path = [model.pick_one_inputs(state)] + [state]
-    curr = state
+def build_cycle(model, s, cycle_trace):
+    path = [model.pick_one_inputs(s)] + [s]
+    curr = s
 
-    for i in reversed(range(k)):
-        pred = model.pre(curr) & new_reach[i]
+    for new_i in reversed(list(takewhile(lambda x: not(s.entailed(x)), cycle_trace))):
+        pred = model.pre(curr) & new_i
         curr = model.pick_one_state(pred)
         path = [model.pick_one_inputs(curr)] + [curr] + path # insert to head
         
-    return [state] + path
+    return [s] + path
 
-def generate_witness_first(model, trace, final_states):
+def generate_witness(model, trace, final_states):
     """
     final_states is the state that starts the loop.
     Generation of witness should start from init and finish from 
@@ -164,14 +183,97 @@ def generate_witness_first(model, trace, final_states):
     """
     state = model.pick_one_state(final_states & trace[-1])
     if len(trace) == 1: return [state]
-    return generate_witness_first(
+    return generate_witness(
         model, 
-        trace[:-1], 
+        trace[:-1],
         model.pre(final_states)) + [model.pick_one_inputs(state), state]
 ```
 
 ## Description
 
+find_cycle_start
+
+: Takes as inputs the model, recur, pre_reach. The output is a state s, which is the initial
+state of a path starting and ending with s, a cycle, and a trace which contains the cycle itself. recur is a set of states which contains such s, and pre_reach is a BDD representing
+all states computed during the `symbolic_reachable` procedure, and contains the cycle.
+
+build_cycle
+
+: Takes as inputs the model, a state which is the start of the cycle and a trace, such trace
+contains the cycle. The output of this function is a path in the model with `state` as its 
+start and end.
+
+generate_witness
+
+: This function takes as inputs the model, a trace and a final state from which it starts
+generating the witness execution, back to the initial state. This function is used to 
+generate the first part of the lasso-shaped witness, meaning the part from an initial state
+to the start of the cycle. In fact the final state is a state from the cycle. I used the 
+same function in the previous assignment, for the generation of a witness for safety properties.
+
+The whole 3 functions can be seen as 1 big function, its output is a lasso-shaped witness.
+The functions are used in the following bit of `symbolic_reachable`:
+
+```python
+s, cycle_trace = find_cycle_start(model, recur, pre_reach)
+first_trace = generate_witness_first(
+    model, 
+    list(
+        takewhile(lambda x: not(s.entailed(x)), 
+        trace)) + [s], 
+    s)
+
+return True, first_trace[:-1] + list(build_cycle(model, s, cycle_trace))
+```
+
+1. First the initial state for the loop and a trace containing the cycle itself are generated
+2. then the first part of the witness is generated, which is a path from an initial state
+to the start of the loop
+3. the cycle is generated, starting from the start of the loop and then the first part of the
+witness and the cycle are put together.
+
 ## Correctness
 
-# Final remarks
+I will not show the correctness for generate_witness, since it is the same function of 
+the first assignment.
+
+### find_cycle_start
+
+Inputs: the model, a BDD of a set of states representing F, a BDD that contains a cycle from and to a state contained in the previous input
+
+Output: a state and a trace that contains a path starting and ending to that state.
+
+I know that $\mbox{recur}\subseteq\mbox{pre_reach}$
+
+
+
+The function is comprised of 2 loops, the outer and the inner loop. 
+
+The outer loop does the following: computes a state from recur, which hopefully is part of a cycle, then computes the post of this state s, intersected with pre_reach, which contains all the states I can form a cycle with. This first new set of states is saved in a list.
+
+The inner loop repeatedly computes the post states of an initial state s, intersected with pre_reach, leaving
+out the states already visited. If such set of states becomes empty, then the cycle ends.
+All of the states computed are saved inside the variable r. If at the end of this loop r contains the initial state s, this means there is a cycle starting and ending with s: otherwise the outer cycle restarts with a new state s. Such new state s is a state from the
+intersection of r and recur: that is because if at some point in the computation of the frontiers, a state $\in$ recur is met, this means that such state may be part of a cycle.
+
+<!-- INVARIANT: s is a state from recur and it is part of an infinite execution of the model 
+INVARIANT OF INNER CYCLE: new is a new set of states of pre_reach -->
+<!-- why do I pick one new state from R??? -->
+
+### build_cycle
+
+Inputs:
+
+ - model, the model I am performing model checking on
+ - state, the start of the loop
+ - the trace which contains the loop.
+
+Output: a list, with for each element an input and the state following that input, such list represents a cycle starting from state.
+
+The function is comprised of a cycle, at the end of the cycle the cycle path is formed.
+The invariant of the cycle is that at each step curr is the i-th step of the cycle.
+Where $i\in [0..k-1]$ and 0, k are the first and last element of the cycle respectively.
+<!-- 
+and path contains the k downwards to the ith step of the cycle at all times
+
+remember that recur is the set of states which are part of a path that starts in a state in recur and ends in a state in recur -->
