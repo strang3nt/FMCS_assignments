@@ -49,8 +49,6 @@ Follows a description and a correctness sketch of the functions implemented:
  - `symbolic_repeatable`, which looks for a cycle that negates the reactivity property, if such cycle exists it outputs `True` and the witness, `False` otherwise
  - 3 auxiliary functions which given the required inputs generate the lazo-shaped witness, namely `generate_witness_first`, `find_cycle_start` and `build_cycle`.
 
-
-
 # Model checking reactivity properties
 
 The reactivity property has the following form: $\square\lozenge f\rightarrow\square\lozenge g$. $g$ and $f$ are properties without temporal operators.
@@ -62,7 +60,7 @@ The symbolic model checking algorithm does just that.
 
 # Symbolic model checking function
 
-```python
+```{.python .numberLines}
 def compute_reach(model):
     reach = model.init
     new = model.init
@@ -78,9 +76,8 @@ First the `compute_reach` is executed, compute reach returns both the reach itse
 a BDD representing all reachable states of the model, and a trace, which is a list of the values of the different state sets computed while looking for the reach.
 Note that the last value inside the trace is an empty BDD.
 
-```python
+```{#symbolic_reachable .python .numberLines caption="symbolic_repeatable function. Computes a witness for a property respected by the model, otherwise returns false."}
 def symbolic_repeatable(model, f, not_g):
-  
     reach, trace = compute_reach(model)
 
     recur = reach & f & not_g
@@ -92,7 +89,7 @@ def symbolic_repeatable(model, f, not_g):
             pre_reach = pre_reach + new
             if recur.entailed(pre_reach):
                 s, cycle_trace = find_cycle_start(model, recur, pre_reach)
-                first_trace = generate_witness_first(
+                first_trace = generate_witness(
                     model, 
                     list(takewhile(lambda x: not(s.entailed(x)), trace)) + [s], 
                     s
@@ -100,7 +97,7 @@ def symbolic_repeatable(model, f, not_g):
                 return True, first_trace[:-1] + list(build_cycle(model, s, cycle_trace))
                 
             new = (model.pre(new) - pre_reach) & not_g
-        recur = recur & pre_reach
+        recur = recur & pre_reach # removes states that cannot form loop
     return False, None
 ```
 
@@ -146,7 +143,7 @@ intersected with $G$.
 
 # Witness generation
 
-```python
+```{.python .numberLines}
 def find_cycle_start(model, recur, pre_reach):
     s = model.pick_one_state(recur)
     while True:
@@ -155,32 +152,40 @@ def find_cycle_start(model, recur, pre_reach):
         cycle_trace = [new]
         while new.isnot_false():
             r = r + new
-            new = model.post(new) & pre_reach
-            new = new - r
+            new = (model.post(new) & pre_reach) - r
             cycle_trace.append(new)
         r = r & recur
         if s.entailed(r):
             return s, cycle_trace
         else:
             s = model.pick_one_state(r)
+```
 
+`find_cycle_start` takes as inputs the model, recur, pre_reach. The output is a state s, which is the initial
+state of a path starting and ending with s, a cycle, and a trace which contains the cycle itself. recur is a set of states which contains such s, and pre_reach is a BDD representing
+all states computed during the `symbolic_repeatable` procedure, and contains the cycle.
+
+```{.python .numberLines}
 def build_cycle(model, s, cycle_trace):
-    path = [model.pick_one_inputs(s)] + [s]
+    path = deque([model.pick_one_inputs(s), s])
     curr = s
 
     for new_i in reversed(list(takewhile(lambda x: not(s.entailed(x)), cycle_trace))):
         pred = model.pre(curr) & new_i
         curr = model.pick_one_state(pred)
-        path = [model.pick_one_inputs(curr)] + [curr] + path # insert to head
+        path.appendleft(curr)
+        path.appendleft(model.pick_one_inputs(curr))
         
-    return [s] + path
+    path.appendleft(s)
+    return path
+```
 
+`build_cycle` takes as inputs the model, a state which is the start of the cycle and a trace, such trace
+contains the cycle. The output of this function is a path in the model with `state` as its 
+start and end.
+
+```{.python .numberLines}
 def generate_witness(model, trace, final_states):
-    """
-    final_states is the state that starts the loop.
-    Generation of witness should start from init and finish from 
-    the previous element of trace s.t. trace[i] contains final_states.
-    """
     state = model.pick_one_state(final_states & trace[-1])
     if len(trace) == 1: return [state]
     return generate_witness(
@@ -189,42 +194,14 @@ def generate_witness(model, trace, final_states):
         model.pre(final_states)) + [model.pick_one_inputs(state), state]
 ```
 
-## Description
-
-find_cycle_start
-
-: Takes as inputs the model, recur, pre_reach. The output is a state s, which is the initial
-state of a path starting and ending with s, a cycle, and a trace which contains the cycle itself. recur is a set of states which contains such s, and pre_reach is a BDD representing
-all states computed during the `symbolic_reachable` procedure, and contains the cycle.
-
-build_cycle
-
-: Takes as inputs the model, a state which is the start of the cycle and a trace, such trace
-contains the cycle. The output of this function is a path in the model with `state` as its 
-start and end.
-
-generate_witness
-
-: This function takes as inputs the model, a trace and a final state from which it starts
+`generate_witness` takes as inputs the model, a trace and a final state from which it starts
 generating the witness execution, back to the initial state. This function is used to 
 generate the first part of the lasso-shaped witness, meaning the part from an initial state
 to the start of the cycle. In fact the final state is a state from the cycle. I used the 
 same function in the previous assignment, for the generation of a witness for safety properties.
 
 The whole 3 functions can be seen as 1 big function, its output is a lasso-shaped witness.
-The functions are used in the following bit of `symbolic_reachable`:
-
-```python
-s, cycle_trace = find_cycle_start(model, recur, pre_reach)
-first_trace = generate_witness_first(
-    model, 
-    list(
-        takewhile(lambda x: not(s.entailed(x)), 
-        trace)) + [s], 
-    s)
-
-return True, first_trace[:-1] + list(build_cycle(model, s, cycle_trace))
-```
+The functions are used in lines 12-18 of [`symbolic_reachable`](#symbolic_reachable) :
 
 1. First the initial state for the loop and a trace containing the cycle itself are generated
 2. then the first part of the witness is generated, which is a path from an initial state
@@ -243,10 +220,6 @@ Inputs: the model, a BDD of a set of states representing F, a BDD that contains 
 
 Output: a state and a trace that contains a path starting and ending to that state.
 
-I know that $\mbox{recur}\subseteq\mbox{pre_reach}$
-
-
-
 The function is comprised of 2 loops, the outer and the inner loop. 
 
 The outer loop does the following: computes a state from recur, which hopefully is part of a cycle, then computes the post of this state s, intersected with pre_reach, which contains all the states I can form a cycle with. This first new set of states is saved in a list.
@@ -256,24 +229,30 @@ out the states already visited. If such set of states becomes empty, then the cy
 All of the states computed are saved inside the variable r. If at the end of this loop r contains the initial state s, this means there is a cycle starting and ending with s: otherwise the outer cycle restarts with a new state s. Such new state s is a state from the
 intersection of r and recur: that is because if at some point in the computation of the frontiers, a state $\in$ recur is met, this means that such state may be part of a cycle.
 
-<!-- INVARIANT: s is a state from recur and it is part of an infinite execution of the model 
-INVARIANT OF INNER CYCLE: new is a new set of states of pre_reach -->
-<!-- why do I pick one new state from R??? -->
-
 ### build_cycle
 
 Inputs:
 
- - model, the model I am performing model checking on
- - state, the start of the loop
- - the trace which contains the loop.
+ - **model**, the model I am performing model checking on
+ - **state**, the start of the loop
+ - the **trace** which contains the loop.
 
-Output: a list, with for each element an input and the state following that input, such list represents a cycle starting from state.
+Output: a list, with the initial state of the loop, with for each next element an input and the state following that input, such list represents a cycle starting from state.
 
 The function is comprised of a cycle, at the end of the cycle the cycle path is formed.
-The invariant of the cycle is that at each step curr is the i-th step of the cycle.
-Where $i\in [0..k-1]$ and 0, k are the first and last element of the cycle respectively.
-<!-- 
-and path contains the k downwards to the ith step of the cycle at all times
 
-remember that recur is the set of states which are part of a path that starts in a state in recur and ends in a state in recur -->
+The invariant of the cycle is that at each step curr is the $k - i - 1$ step of the cycle,
+where $i\in [0..k-2]$,
+and path contains the k downwards to the $k-i-1$ step of the cycle at all times, where the element
+k and the element 0 are the same.
+
+At the first iteration curr is the state preceding the last state of the loop,
+the k-1 step. At the following steps the curr is the k - i - 1 element of the cycle, and 
+since I keep all curr values inside the path variable, path contains the k step downwards to the $k-i-1$ step.
+At the last step curr is the $ k - (k - 2) - 1 = 1$ element of the cycle, and path
+contains all of the states of a cycle from the k-th element to the 1-st element.
+
+The function returns the path obtained through the aforementioned loop, and appends to the
+start of the path, the initial state, thus forming the full cycle.
+
+# References

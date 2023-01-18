@@ -115,21 +115,19 @@ def find_cycle_start(model, recur, pre_reach):
             s = model.pick_one_state(r)
 
 def build_cycle(model, s, cycle_trace):
-    path = [model.pick_one_inputs(s)] + [s]
+    path = deque([model.pick_one_inputs(s), s])
     curr = s
 
     for new_i in reversed(list(takewhile(lambda x: not(s.entailed(x)), cycle_trace))):
         pred = model.pre(curr) & new_i
         curr = model.pick_one_state(pred)
-        path = [model.pick_one_inputs(curr)] + [curr] + path # insert to head
+        path.appendleft(curr)
+        path.appendleft(model.pick_one_inputs(curr))
         
-    return [s] + path
+    path.appendleft(s)
+    return path
 
 def generate_witness(model, trace, final_states):
-    """
-    final_states is the state that starts the loop.
-    Generation of witness should start from init and finish from the previous element of trace s.t. trace[i] contains final_states.
-    """
     state = model.pick_one_state(final_states & trace[-1])
     if len(trace) == 1: return [state]
     return generate_witness(
