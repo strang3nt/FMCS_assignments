@@ -64,17 +64,16 @@ The symbolic model checking algorithm does just that.
 def compute_reach(model):
     reach = model.init
     new = model.init
-    trace = [model.init]
+    trace = []
     while new.isnot_false():
-        new = model.post(new) - reach
         trace = trace + [new]
+        new = model.post(new) - reach
         reach = reach + new
     return reach, trace
 ```
 
 First the `compute_reach` is executed, compute reach returns both the reach itself, which is
 a BDD representing all reachable states of the model, and a trace, which is a list of the values of the different state sets computed while looking for the reach.
-Note that the last value inside the trace is an empty BDD.
 
 ```{#symbolic_reachable .python .numberLines caption="symbolic_repeatable function. Computes a witness for a property respected by the model, otherwise returns false."}
 def symbolic_repeatable(model, f, not_g):

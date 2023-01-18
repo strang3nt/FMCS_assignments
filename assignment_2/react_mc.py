@@ -91,10 +91,10 @@ def parse_react(spec):
 def compute_reach(model):
     reach = model.init
     new = model.init
-    trace = [model.init]
+    trace = []
     while new.isnot_false():
-        new = model.post(new) - reach
         trace = trace + [new]
+        new = model.post(new) - reach
         reach = reach + new
     return reach, trace
 
