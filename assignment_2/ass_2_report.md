@@ -20,7 +20,8 @@ references:
   volume: 78
   number: 3
   pages: 911-938
-  year: 2012
+  issued:
+    year: 2012
   note: 'In Commemoration of Amir Pnueli'
   ISSN: 0022-0000
   DOI: '10.1016/j.jcss.2011.08.007'
